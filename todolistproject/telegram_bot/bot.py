@@ -5,7 +5,6 @@ from telegram.ext import Updater, CommandHandler
 bot_token = '5939894637:AAFMrpkeK8uh_eKy3q6Wc2zoPHs11j2De3g'
 api_url = 'http://localhost:8000/api/'
 
-
 # Створення об'єкта бота
 bot = Bot(token=bot_token)
 
@@ -13,10 +12,25 @@ bot = Bot(token=bot_token)
 updater = Updater(bot=bot, use_context=True)
 
 
+# Стандартний стартер бота із поясненням можливостей
 def start(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Привіт! Вітаю з запуском бота!")
+    context.bot.send_message(chat_id=update.effective_chat.id, text="Привіт! Вітаю з запуском бота TODO list!\n")
+    help(update, context)
 
 
+
+def help(update, context):
+    context.bot.send_message(chat_id=update.effective_chat.id, text="Основні команди:\n"
+                                                                    "/create <title> <description> <due_date> - "
+                                                                    "створення нового завдання. Формат дати повинен бути у формі YYYY-MM-DD.\n" +
+                                                                    "/list - виведення списку всіх завдань.\n" +
+                                                                    "/view <task_id> - перегляд конкретного завдання за його ідентифікатором.\n" +
+                                                                    "/update <task_id> <new_title> - оновлення заголовка завдання.\n" +
+                                                                    "/complete <task_id> - відмітка завдання як виконаного.\n" +
+                                                                    "/delete <task_id> - видалення завдання.\n")
+
+
+#Створити запис
 def create(update, context):
     args = context.args
     title = args[0]
@@ -40,6 +54,7 @@ def create(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 
+# Вивести всі задачі
 def list_tasks(update, context):
     url = f'{api_url}tasks/'
     response = requests.get(url)
@@ -57,7 +72,7 @@ def list_tasks(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 
-
+# Вивести задачу за номером
 def view_task(update, context):
     task_id = context.args[0]
 
@@ -78,6 +93,8 @@ def view_task(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 
+# Оновнити назву задачі
+# У задачі сказано сновити саме тайтл задачі, проте не опис чи дату. Роблю що запитано, хоча розумію можливість виконати редагування інших параметрів
 def update_task(update, context):
     task_id = context.args[0]
     new_title = ' '.join(context.args[1:])
@@ -94,6 +111,7 @@ def update_task(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 
+# позначити задачу як виконану
 def complete_task(update, context):
     task_id = context.args[0]
 
@@ -108,6 +126,7 @@ def complete_task(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 
+# видалити задачу
 def delete_task(update, context):
     task_id = context.args[0]
 
@@ -121,6 +140,8 @@ def delete_task(update, context):
 
     context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
+
+# Функція заготовлена для подальшого видалення всіх елементів списку справ
 def clear_all(update, context):
     url = f'{api_url}tasks/'
     response = requests.delete(url)
@@ -133,9 +154,11 @@ def clear_all(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 
+# функція запуску боту, із додачею обробників команд
 def run_bot():
     # Створення обробників команд для оновлювача
     start_handler = CommandHandler('start', start)
+    help_handler = CommandHandler('help', help)
     create_handler = CommandHandler('create', create)
     list_handler = CommandHandler('list', list_tasks)
     view_handler = CommandHandler('view', view_task)
@@ -143,7 +166,6 @@ def run_bot():
     complete_handler = CommandHandler('complete', complete_task)
     delete_handler = CommandHandler('delete', delete_task)
     clear_all_handler = CommandHandler('clear_all', clear_all)
-
 
     # # Налаштування пулу зв'язків
     # session = requests.Session()
@@ -153,6 +175,7 @@ def run_bot():
 
     # Додавання обробників до оновлювача
     updater.dispatcher.add_handler(start_handler)
+    updater.dispatcher.add_handler(help_handler)
     updater.dispatcher.add_handler(create_handler)
     updater.dispatcher.add_handler(list_handler)
     updater.dispatcher.add_handler(view_handler)
@@ -166,4 +189,3 @@ def run_bot():
 
     # Зупинка бота при натисканні Ctrl + C
     updater.idle()
-
