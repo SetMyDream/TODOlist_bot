@@ -1,3 +1,7 @@
+from datetime import datetime
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import CallbackQueryHandler
+
 import requests
 from telegram import Bot
 from telegram.ext import Updater, CommandHandler
@@ -12,22 +16,40 @@ bot = Bot(token=bot_token)
 updater = Updater(bot=bot, use_context=True)
 
 
+keyboard1 = [
+    [InlineKeyboardButton("Допомога", callback_data='help')],
+    [InlineKeyboardButton("Список задач", callback_data='list')],
+]
+reply_markup1 = InlineKeyboardMarkup(keyboard1)
+
+
 # Стандартний стартер бота із поясненням можливостей
 def start(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Привіт! Вітаю з запуском бота TODO list!\n")
-    help(update, context)
+    # Створення кнопок для команд /help і /list
+    context.bot.send_message(chat_id=update.effective_chat.id, text="Привіт! Вітаю з запуском бота TODO list!\n", reply_markup=reply_markup1)
 
+
+def button_click(update, context):
+    query = update.callback_query
+    command = query.data
+
+    if command == 'help':
+        help(update, context)
+    elif command == 'list':
+        list_tasks(update, context)
+    query.answer()  # Повідомляємо Telegram, що кнопку оброблено
 
 
 def help(update, context):
-    context.bot.send_message(chat_id=update.effective_chat.id, text="Основні команди:\n"
+    context.bot.send_message(chat_id=update.effective_chat.id, reply_markup=reply_markup1, text="Основні команди:\n"
                                                                     "/create <title> <description> <due_date> - "
                                                                     "створення нового завдання. Формат дати повинен бути у формі YYYY-MM-DD.\n" +
                                                                     "/list - виведення списку всіх завдань.\n" +
                                                                     "/view <task_id> - перегляд конкретного завдання за його ідентифікатором.\n" +
                                                                     "/update <task_id> <new_title> - оновлення заголовка завдання.\n" +
                                                                     "/complete <task_id> - відмітка завдання як виконаного.\n" +
-                                                                    "/delete <task_id> - видалення завдання.\n")
+                                                                    "/delete <task_id> - видалення завдання.\n"
+                                                                    "/help - виклик списку команд")
 
 
 #Створити запис
@@ -35,7 +57,13 @@ def create(update, context):
     args = context.args
     title = args[0]
     description = ' '.join(args[1:-1])
-    due_date = args[-1:]
+    due_date_str = str(args[-1:])
+    due_date = ''
+
+    try:
+        due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
+    except ValueError:
+        message = 'Неправильний формат дати. Будь ласка, використовуйте формат YYYY-MM-DD.'
 
     url = f'{api_url}tasks/'
     data = {
@@ -51,7 +79,7 @@ def create(update, context):
     else:
         message = 'Виникла помилка при створенні задачі.'
 
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message)
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, reply_markup=reply_markup1)
 
 
 # Вивести всі задачі
@@ -61,15 +89,27 @@ def list_tasks(update, context):
     tasks = response.json()
 
     if response.status_code == 200:
-        message = "Список задач:\n"
+        buttons = []
+        row = []
         for task in tasks:
             task_id = task['id']
             title = task['title']
-            message += f"- {task_id}: {title}\n"  # Виведення task_id та назви задачі
+            button = InlineKeyboardButton(title, callback_data=f"view_{task_id}")
+            row.append(button)
+            if len(row) == 1:  # Задаємо кількість кнопок у рядку
+                buttons.append(row)
+                row = []
+
+        if row:  # Додаткова перевірка, якщо кількість кнопок не ділиться на кількість кнопок у рядку
+            buttons.append(row)
+
+        reply_markup = InlineKeyboardMarkup(buttons)
+        message = "Список задач:"
     else:
+        reply_markup = None
         message = 'Виникла помилка при отриманні списку задач.'
 
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message)
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, reply_markup=reply_markup)
 
 
 # Вивести задачу за номером
@@ -85,8 +125,6 @@ def view_task(update, context):
         message += f"Заголовок: {task['title']}\n"
         message += f"Опис: {task['description']}\n"
         message += f"Дата завершення: {task['due_date']}\n"
-        status = 'виконано' if task['completed'] else 'не виконано'
-        message += f"Статус: {status}\n"
     else:
         message = f"Задача {task_id} не знайдена."
 
@@ -165,7 +203,9 @@ def run_bot():
     update_handler = CommandHandler('update', update_task)
     complete_handler = CommandHandler('complete', complete_task)
     delete_handler = CommandHandler('delete', delete_task)
-    clear_all_handler = CommandHandler('clear_all', clear_all)
+    # clear_all_handler = CommandHandler('clear_all', clear_all)
+
+
 
     # # Налаштування пулу зв'язків
     # session = requests.Session()
@@ -182,7 +222,11 @@ def run_bot():
     updater.dispatcher.add_handler(update_handler)
     updater.dispatcher.add_handler(complete_handler)
     updater.dispatcher.add_handler(delete_handler)
-    updater.dispatcher.add_handler(clear_all_handler)
+    # updater.dispatcher.add_handler(clear_all_handler)
+    updater.dispatcher.add_handler(CallbackQueryHandler(button_click))
+    updater.dispatcher.add_handler(CommandHandler('start', start))
+    updater.dispatcher.add_handler(CommandHandler('help', help))
+    updater.dispatcher.add_handler(CommandHandler('list', list_tasks))
 
     # Запуск бота
     updater.start_polling()
