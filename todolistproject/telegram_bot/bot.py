@@ -17,7 +17,7 @@ updater = Updater(bot=bot, use_context=True)
 
 
 keyboard1 = [
-    [InlineKeyboardButton("Допомога", callback_data='help')],
+    [InlineKeyboardButton("Список команд", callback_data='help')],
     [InlineKeyboardButton("Список задач", callback_data='list')],
 ]
 reply_markup1 = InlineKeyboardMarkup(keyboard1)
@@ -33,11 +33,74 @@ def button_click(update, context):
     query = update.callback_query
     command = query.data
 
-    if command == 'help':
-        help(update, context)
-    elif command == 'list':
-        list_tasks(update, context)
+    actions = {
+        'help': help,
+        'list': list_tasks,
+        'prev_page': prev_page,
+        'next_page': next_page
+    }
+
+    if command.startswith('view_'):
+        task_id = command.split('_')[1]
+        actions['view'](update, context, task_id)
+    elif command in actions:
+        task_id = command.split('_')[1]
+        actions[command](update, context)
+
     query.answer()  # Повідомляємо Telegram, що кнопку оброблено
+
+
+def prev_page(update, context):
+    current_page = context.user_data.get('current_page', 1)
+    current_page -= 1
+    context.user_data['current_page'] = current_page
+    list_tasks(update, context)
+
+
+def next_page(update, context):
+    current_page = context.user_data.get('current_page', 1)
+    current_page += 1
+    context.user_data['current_page'] = current_page
+    list_tasks(update, context)
+
+
+def get_tasks(start_index, page_size):
+    # Отримання списку задач з відповідними параметрами start_index та page_size
+    url = f'{api_url}tasks/?start_index={start_index}&page_size={page_size}'
+    response = requests.get(url)
+    tasks = response.json()
+
+    if response.status_code == 200:
+        return tasks
+    else:
+        return []
+
+
+def send_task_list(context, chat_id, tasks, page, total_pages):
+    tasks_per_page = 5  # Кількість задач на одній сторінці
+
+    start_index = (page - 1) * tasks_per_page
+    end_index = start_index + tasks_per_page
+    tasks_on_page = tasks[start_index:end_index]
+
+    message = "Список задач:\n"
+    for task in tasks_on_page:
+        task_id = task['id']
+        title = task['title']
+        message += f"- {task_id}: {title}\n"
+
+    keyboard = []
+
+    # Додавання кнопок навігації "Попередня сторінка" і "Наступна сторінка"
+    if page > 1:
+        prev_button = InlineKeyboardButton("Попередня сторінка", callback_data=f"prev_page")
+        keyboard.append(prev_button)
+    if page < total_pages:
+        next_button = InlineKeyboardButton("Наступна сторінка", callback_data=f"next_page")
+        keyboard.append(next_button)
+
+    reply_markup = InlineKeyboardMarkup([keyboard])
+    context.bot.send_message(chat_id=chat_id, text=message, reply_markup=reply_markup)
 
 
 def help(update, context):
@@ -56,45 +119,55 @@ def help(update, context):
 def create(update, context):
     args = context.args
     title = args[0]
-    description = ' '.join(args[1:-1])
-    due_date_str = str(args[-1:])
-    due_date = ''
-
-    try:
-        due_date = datetime.strptime(due_date_str, '%Y-%m-%d').date()
-    except ValueError:
-        message = 'Неправильний формат дати. Будь ласка, використовуйте формат YYYY-MM-DD.'
+    description = " ".join(args[1:-1])
+    due_date = "".join(args[-1:])
 
     url = f'{api_url}tasks/'
     data = {
         'title': title,
         'description': description,
-        'due_date': due_date,
-        'completed': False
+        'due_date': due_date
     }
-    response = requests.post(url, data=data)
+    response = requests.post(url, json=data)
 
     if response.status_code == 201:
         message = 'Задача успішно створена!'
     else:
         message = 'Виникла помилка при створенні задачі.'
-
     context.bot.send_message(chat_id=update.effective_chat.id, text=message, reply_markup=reply_markup1)
+
+
+# Глобальна змінна для зберігання стану пагінації
+pagination_state = {
+    'page': 1,
+    'per_page': 5
+}
 
 
 # Вивести всі задачі
 def list_tasks(update, context):
+    current_page = context.user_data.get('current_page', 1)
     url = f'{api_url}tasks/'
     response = requests.get(url)
     tasks = response.json()
 
     if response.status_code == 200:
+        page = current_page
+        per_page = pagination_state['per_page']
+        total_tasks = len(tasks)
+        total_pages = (total_tasks + per_page - 1) // per_page  # Обчислюємо загальну кількість сторінок
+
+        # Вирізаємо потрібну частину задач для поточної сторінки
+        start_index = (page - 1) * per_page
+        end_index = start_index + per_page
+        tasks_page = tasks[start_index:end_index]
+
         buttons = []
         row = []
-        for task in tasks:
+        for task in tasks_page:
             task_id = task['id']
             title = task['title']
-            button = InlineKeyboardButton(title, callback_data=f"view_{task_id}")
+            button = InlineKeyboardButton(title, callback_data=f"{api_url}tasks/{task_id}/")
             row.append(button)
             if len(row) == 1:  # Задаємо кількість кнопок у рядку
                 buttons.append(row)
@@ -103,8 +176,19 @@ def list_tasks(update, context):
         if row:  # Додаткова перевірка, якщо кількість кнопок не ділиться на кількість кнопок у рядку
             buttons.append(row)
 
+        # Додавання кнопок пагінації
+        pagination_buttons = []
+        if page > 1:
+            prev_button = InlineKeyboardButton("Попередня сторінка", callback_data=f"prev_page")
+            pagination_buttons.append(prev_button)
+        if page < total_pages:
+            next_button = InlineKeyboardButton("Наступна сторінка", callback_data=f"next_page")
+            pagination_buttons.append(next_button)
+
+        buttons.append(pagination_buttons)
+
         reply_markup = InlineKeyboardMarkup(buttons)
-        message = "Список задач:"
+        message = f"Список задач (сторінка {page}/{total_pages}):"
     else:
         reply_markup = None
         message = 'Виникла помилка при отриманні списку задач.'
@@ -204,7 +288,8 @@ def run_bot():
     complete_handler = CommandHandler('complete', complete_task)
     delete_handler = CommandHandler('delete', delete_task)
     # clear_all_handler = CommandHandler('clear_all', clear_all)
-
+    next_page_handler = CallbackQueryHandler(next_page, pattern=r"^next_page:")
+    prev_page_handler = CallbackQueryHandler(prev_page, pattern=r"^prev_page:")
 
 
     # # Налаштування пулу зв'язків
@@ -227,6 +312,9 @@ def run_bot():
     updater.dispatcher.add_handler(CommandHandler('start', start))
     updater.dispatcher.add_handler(CommandHandler('help', help))
     updater.dispatcher.add_handler(CommandHandler('list', list_tasks))
+    updater.dispatcher.add_handler(CommandHandler('view', view_task))
+    updater.dispatcher.add_handler(prev_page_handler)
+    updater.dispatcher.add_handler(next_page_handler)
 
     # Запуск бота
     updater.start_polling()
