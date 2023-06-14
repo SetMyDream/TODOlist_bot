@@ -3,11 +3,7 @@
 # Press Shift+F10 to execute it or replace it with your code.
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
-
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
-
+# Простий тестовий скрипт для рівня АПІ
 def test_script():
     import requests
 
@@ -49,10 +45,25 @@ def test_script():
     print(response)
 
 
+# Команда очищення БД, поки не працює коректно
+def delete_all_tasks():
+    import requests
+
+    api_url = 'http://localhost:8000/api/tasks/'
+    url = f'{api_url}'
+    response = requests.delete(url)
+
+    if response.status_code == 204:
+        print("Усі таски успішно видалені.")
+    else:
+        print("Виникла помилка при видаленні тасків.")
+
+
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    # test_script()\
+    # test_script()
     import todolistproject.telegram_bot.bot as bot
+    # delete_all_tasks()
     bot.run_bot()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
