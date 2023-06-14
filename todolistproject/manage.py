@@ -1,10 +1,13 @@
 #!/usr/bin/env python
 """Django's command-line utility for administrative tasks."""
+import asyncio
+import multiprocessing
 import os
 import sys
+from telegram_bot import bot as telegram_bot
 
 
-def main():
+async def django():
     """Run administrative tasks."""
     os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'todolistproject.settings')
     try:
@@ -18,5 +21,19 @@ def main():
     execute_from_command_line(sys.argv)
 
 
+async def run_bot_acync():
+    telegram_bot.run_bot()
+
+
+async def main():
+
+    task1 = asyncio.create_task(django())
+    task2 = asyncio.create_task(run_bot_acync())
+
+    # Очікуємо завершення обох серверних процесів
+    await asyncio.gather(task1, task2)
+
+
 if __name__ == '__main__':
-    main()
+    asyncio.run(main())
+    # main()
