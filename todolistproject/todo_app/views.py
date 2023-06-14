@@ -14,6 +14,7 @@ class TaskListCreateAPIView(generics.ListCreateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
 
+
 # Загальний метод для операцій отримання, видалення, оновлення за допомогою Django GenericsORM (можна об'єднати в одну функцію із попереднім?)
 class TaskRetrieveUpdateDestroyAPIView(generics.RetrieveUpdateDestroyAPIView):
     queryset = Task.objects.all()
@@ -31,6 +32,7 @@ class ClearAllTasksAPIView(APIView):
         Task.objects.all().delete()
         return Response({'message': 'Усі таски видалено'})
 
+
 # функція для обробки запитів на поставлення задачі в стан виконано. Зворотньох функції не реалізовував через відсутність задачі
 class TaskCompleteAPIView(APIView):
     def get(self, request, task_id):
@@ -39,6 +41,18 @@ class TaskCompleteAPIView(APIView):
             task.completed = True
             task.save()
             return Response({'message': f'Задачу {task_id} відмічено як виконану.'})
+        except Task.DoesNotExist:
+            return Response({'error': f'Задачу {task_id} не знайдено.'}, status=404)
+
+
+# функція для обробки запитів на поставлення задачі в стан невиконано. Зворотньох функції не реалізовував через відсутність задачі
+class TaskIncompleteAPIView(APIView):
+    def get(self, request, task_id):
+        try:
+            task = Task.objects.get(id=task_id)
+            task.completed = False
+            task.save()
+            return Response({'message': f'Задачу {task_id} відмічено як невиконану.'})
         except Task.DoesNotExist:
             return Response({'error': f'Задачу {task_id} не знайдено.'}, status=404)
 

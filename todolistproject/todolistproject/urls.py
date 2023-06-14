@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
-from todo_app.views import TaskListCreateAPIView, TaskRetrieveUpdateDestroyAPIView, TaskCountAPIView, ClearAllTasksAPIView, TaskCompleteAPIView
+from todo_app.views import TaskListCreateAPIView, TaskRetrieveUpdateDestroyAPIView, TaskCountAPIView, ClearAllTasksAPIView, TaskCompleteAPIView, TaskIncompleteAPIView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -25,5 +25,6 @@ urlpatterns = [
     path('api/tasks/count/', TaskCountAPIView.as_view(), name='task-count'),
     path('api/tasks/clear-all/', ClearAllTasksAPIView.as_view(), name='clear_all_tasks'),
     path('api/tasks/<int:task_id>/complete/', TaskCompleteAPIView.as_view(), name='task-complete'),
+    path('api/tasks/<int:task_id>/incomplete/', TaskIncompleteAPIView.as_view(), name='task-incomplete'),
 ]
 
