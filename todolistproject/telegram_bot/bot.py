@@ -17,7 +17,7 @@ updater = Updater(bot=bot, use_context=True)
 
 
 keyboard1 = [
-    [InlineKeyboardButton("Список команд", callback_data='help')],
+    [InlineKeyboardButton("Команди", callback_data='help')],
     [InlineKeyboardButton("Список задач", callback_data='list')],
 ]
 reply_markup1 = InlineKeyboardMarkup(keyboard1)
@@ -36,16 +36,19 @@ def button_click(update, context):
     actions = {
         'help': help,
         'list': list_tasks,
-        'prev_page': prev_page,
-        'next_page': next_page
+        'prev': prev_page,
+        'next': next_page,
+        'view': view_task,
+        'complete': complete_task,
+        'incomplete': incomplete_task,
+        'delete': delete_task
     }
-
-    if command.startswith('view_'):
-        task_id = command.split('_')[1]
-        actions['view'](update, context, task_id)
-    elif command in actions:
-        task_id = command.split('_')[1]
-        actions[command](update, context)
+    parts = command.split('_')
+    action = parts[0]
+    task_id = parts[1] if len(parts) > 1 else None
+    if action in actions:
+        context.bot_data['task_id'] = task_id
+    actions[action](update, context)
 
     query.answer()  # Повідомляємо Telegram, що кнопку оброблено
 
@@ -93,10 +96,10 @@ def send_task_list(context, chat_id, tasks, page, total_pages):
 
     # Додавання кнопок навігації "Попередня сторінка" і "Наступна сторінка"
     if page > 1:
-        prev_button = InlineKeyboardButton("Попередня сторінка", callback_data=f"prev_page")
+        prev_button = InlineKeyboardButton("Попередня сторінка", callback_data=f"prev")
         keyboard.append(prev_button)
     if page < total_pages:
-        next_button = InlineKeyboardButton("Наступна сторінка", callback_data=f"next_page")
+        next_button = InlineKeyboardButton("Наступна сторінка", callback_data=f"next")
         keyboard.append(next_button)
 
     reply_markup = InlineKeyboardMarkup([keyboard])
@@ -167,7 +170,7 @@ def list_tasks(update, context):
         for task in tasks_page:
             task_id = task['id']
             title = task['title']
-            button = InlineKeyboardButton(title, callback_data=f"{api_url}tasks/{task_id}/")
+            button = InlineKeyboardButton(title, callback_data=f"view_{task_id}")
             row.append(button)
             if len(row) == 1:  # Задаємо кількість кнопок у рядку
                 buttons.append(row)
@@ -179,10 +182,10 @@ def list_tasks(update, context):
         # Додавання кнопок пагінації
         pagination_buttons = []
         if page > 1:
-            prev_button = InlineKeyboardButton("Попередня сторінка", callback_data=f"prev_page")
+            prev_button = InlineKeyboardButton("Попередня сторінка", callback_data=f"prev")
             pagination_buttons.append(prev_button)
         if page < total_pages:
-            next_button = InlineKeyboardButton("Наступна сторінка", callback_data=f"next_page")
+            next_button = InlineKeyboardButton("Наступна сторінка", callback_data=f"next")
             pagination_buttons.append(next_button)
 
         buttons.append(pagination_buttons)
@@ -198,27 +201,46 @@ def list_tasks(update, context):
 
 # Вивести задачу за номером
 def view_task(update, context):
-    task_id = context.args[0]
+    if context.args:
+        task_id = context.args[0]
+    else:
+        task_id = context.bot_data.get('task_id')
 
     url = f'{api_url}tasks/{task_id}/'
     response = requests.get(url)
     task = response.json()
 
     if response.status_code == 200:
+        status = 'виконано' if task['completed'] else 'не виконано'
         message = f"Задача {task_id}:\n"
         message += f"Заголовок: {task['title']}\n"
         message += f"Опис: {task['description']}\n"
         message += f"Дата завершення: {task['due_date']}\n"
+        message += f"Статус: {status}\n"
     else:
         message = f"Задача {task_id} не знайдена."
 
-    context.bot.send_message(chat_id=update.effective_chat.id, text=message)
+    # Створення клавіатури з кнопками
+    keyboard = []
+    if not task['completed']:
+        keyboard.append([InlineKeyboardButton("Позначити як виконане", callback_data=f"complete_{task_id}")])
+    else:
+        keyboard.append([InlineKeyboardButton("Позначити як невиконане", callback_data=f"incomplete_{task_id}")])
+    keyboard.append([InlineKeyboardButton("Видалити", callback_data=f"delete_{task_id}")])
+    keyboard.append([InlineKeyboardButton("Список задач", callback_data="list")])
+
+    reply_markup_view = InlineKeyboardMarkup(keyboard)
+
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message, reply_markup=reply_markup_view)
 
 
 # Оновнити назву задачі
 # У задачі сказано сновити саме тайтл задачі, проте не опис чи дату. Роблю що запитано, хоча розумію можливість виконати редагування інших параметрів
 def update_task(update, context):
-    task_id = context.args[0]
+    if context.args:
+        task_id = context.args[0]
+    else:
+        task_id = context.bot_data.get('task_id')
     new_title = ' '.join(context.args[1:])
 
     url = f'{api_url}tasks/{task_id}/'
@@ -235,7 +257,10 @@ def update_task(update, context):
 
 # позначити задачу як виконану
 def complete_task(update, context):
-    task_id = context.args[0]
+    if context.args:
+        task_id = context.args[0]
+    else:
+        task_id = context.bot_data.get('task_id')
 
     url = f'{api_url}tasks/{task_id}/complete/'
     response = requests.get(url)
@@ -248,10 +273,27 @@ def complete_task(update, context):
     context.bot.send_message(chat_id=update.effective_chat.id, text=message)
 
 
+def incomplete_task(update, context):
+    if context.args:
+        task_id = context.args[0]
+    else:
+        task_id = context.bot_data.get('task_id')
+    url = f'{api_url}tasks/{task_id}/incomplete/'
+    response = requests.get(url)
+    if response.status_code == 200:
+        message = f"Задача {task_id} відмічена як невиконана."
+    else:
+        message = f"Не вдалося відмітити задачу {task_id} як невиконану."
+
+    context.bot.send_message(chat_id=update.effective_chat.id, text=message)
+
+
 # видалити задачу
 def delete_task(update, context):
-    task_id = context.args[0]
-
+    if context.args:
+        task_id = context.args[0]
+    else:
+        task_id = context.bot_data.get('task_id')
     url = f'{api_url}tasks/{task_id}/'
     response = requests.delete(url)
 
@@ -286,6 +328,7 @@ def run_bot():
     view_handler = CommandHandler('view', view_task)
     update_handler = CommandHandler('update', update_task)
     complete_handler = CommandHandler('complete', complete_task)
+    incomplete_handler = CommandHandler('incomplete', incomplete_task)
     delete_handler = CommandHandler('delete', delete_task)
     # clear_all_handler = CommandHandler('clear_all', clear_all)
     next_page_handler = CallbackQueryHandler(next_page, pattern=r"^next_page:")
@@ -306,6 +349,7 @@ def run_bot():
     updater.dispatcher.add_handler(view_handler)
     updater.dispatcher.add_handler(update_handler)
     updater.dispatcher.add_handler(complete_handler)
+    updater.dispatcher.add_handler(incomplete_handler)
     updater.dispatcher.add_handler(delete_handler)
     # updater.dispatcher.add_handler(clear_all_handler)
     updater.dispatcher.add_handler(CallbackQueryHandler(button_click))

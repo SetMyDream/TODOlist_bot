@@ -45,6 +45,17 @@ class TaskCompleteAPIView(APIView):
             return Response({'error': f'Задачу {task_id} не знайдено.'}, status=404)
 
 
+# функція для обробки запитів на поставлення задачі в стан невиконано. Зворотньох функції не реалізовував через відсутність задачі
+class TaskIncompleteAPIView(APIView):
+    def get(self, request, task_id):
+        try:
+            task = Task.objects.get(id=task_id)
+            task.completed = False
+            task.save()
+            return Response({'message': f'Задачу {task_id} відмічено як невиконану.'})
+        except Task.DoesNotExist:
+            return Response({'error': f'Задачу {task_id} не знайдено.'}, status=404)
+
 # Функція для підрахунку задач у базі даних (без фільтрації). Може знадобитись далі
 class TaskCountAPIView(APIView):
     def get(self, request):
